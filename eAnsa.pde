@@ -1,12 +1,13 @@
-// Ventoinha 03 : Com Antenas !!
+// Ventoinha 04 : Com Antenas !!
 //
 // Teste de antenas...
+//   Quase igual a 03, mas com umas mudancas de "types" e delay entre analogReads
 //
 
-#define DEBUG 0
+#define DEBUG 1
 
 // pins for analog read
-#define ANALOG0 0
+#define ANALOG0 A0
 
 // number of flops and first clock pin
 #define NUM_CLKS 4
@@ -28,31 +29,34 @@
 
 // Patterns should have same length for synchronizing interwoven patterns
 // 
-const short P[4][PSIZE] = {
+const int8_t P[4][PSIZE] = {
   // clear pattern (probably not used, since memories don' get clocked unless they're active, but ....
   {
-    0, 0, 0, 0, 0, 0, 0, 0,0, 0, 0, 0,-1,0,0,0                                                 },
+    0, 0, 0, 0, 0, 0, 0, 0,0, -1, 0, 0,-1,0,0,0                                                                 }
+  ,
 
   // test patterns
   {
-    1, 3, 6,12,24,48,32, 0,0, 0, 0, 0,-1,0,0,0                                                 },
+    1, 3, 6,12,24,48,32, 0,0, 0, 0, 0,-1,-1,0,0                                                                 }
+  ,
   {
-    32,0, 0, 0, 0, 0, 1, 3,6,12,24,48,-1,0,0,0                                                 },
+    32,0, 0, 0, 0, 0, 1, 3,6,12,24,48,-1,-1,0,0                                                                 }
+  ,
 
   // simple pattern
   {
-    3, 6,12,24,48,-1, -1, 0,0, 0, 0, 0,-1,0,0,0                                                 }
+    3, 6,12,24,48,-1, -1, 0,0, 0, 0, 0,-1,0,0,0                                                                 }
 
 
 };
 
 
 // sequence arrays 
-short V[NUM_CLKS][PSIZE];
+int8_t V[NUM_CLKS][PSIZE];
 
 // index into V arrays.
 // also, -1 if not playing array
-short I[NUM_CLKS];
+int8_t I[NUM_CLKS];
 
 // max sections allowed to run at once
 // depends on how many columns we turn on at a time, per section
@@ -61,7 +65,7 @@ short I[NUM_CLKS];
 #define MAXSEC 2
 
 // how many of the 4 sections are active
-unsigned short sec_count;
+uint8_t sec_count;
 
 //// sensors
 //
@@ -70,13 +74,13 @@ unsigned short sec_count;
 #define AVGSIZE 16
 
 // array for keeping values read from sensors
-unsigned int    VALS[NUM_CLKS][AVGSIZE];
+uint16_t    VALS[NUM_CLKS][AVGSIZE];
 
 // array to keep indexes for VALS array.
 // we can use the same index for all of them, since we
 // will always be updating all the running averages all the time,
 // but this is safer.
-unsigned short IVALS[NUM_CLKS];
+uint8_t IVALS[NUM_CLKS];
 
 // running sums of values from sensors
 unsigned int    SUMS[NUM_CLKS];
@@ -86,38 +90,34 @@ unsigned int MAXQ[NUM_CLKS];
 unsigned int MINQ[NUM_CLKS];
 
 // cycle counter
-unsigned short cycle_count;
+uint32_t cycle_count;
 
 void setup() {
 
   sec_count = cycle_count = 0;
 
-  // zero all indexes
+  // zero V arrays and indexes
   for(short i=0; i<NUM_CLKS; i++) {
     I[i] = -1;
-  }
-
-  // zero V arrays
-  for(int i=0; i<NUM_CLKS; i++) {
-    for(int j=0; j<PSIZE; j++) {
+    for(short j=0; j<PSIZE; j++) {
       V[i][j] = P[0][j];
     }
   }
 
   // zero the clock signals...
-  for(int clk=(NUM_CLKS-1); clk>=0; clk--) {
+  for(short clk=(NUM_CLKS-1); clk>=0; clk--) {
     pinMode(CLK0+clk, OUTPUT);  
     digitalWrite(CLK0+clk,LOW);
   }
 
   // zero the flop inputs
-  for (int j=0; j<BPF; j++) {
+  for (short j=0; j<BPF; j++) {
     pinMode(BIT0+j, OUTPUT);  
     digitalWrite(BIT0+j,LOW);
   }
 
   // clock zeros into flops
-  for(int clk=(NUM_CLKS-1); clk>=0; clk--) {
+  for(short clk=(NUM_CLKS-1); clk>=0; clk--) {
     digitalWrite(CLK0+clk,HIGH);
     delay(50);
     digitalWrite(CLK0+clk,LOW);
@@ -128,15 +128,16 @@ void setup() {
   //////
 
   // zero all sums, mins, maxs, indexes, and val arrays
-  for(int i=0; i<NUM_CLKS; i++) {
+  for(short i=0; i<NUM_CLKS; i++) {
     SUMS[i] = 0;
     MAXQ[i] = 0;
     MINQ[i] = 1024;
 
     IVALS[i] = 0;
 
-    for(int j=0; j<AVGSIZE; j++){
+    for(short j=0; j<AVGSIZE; j++){
       VALS[i][j] = analogRead(ANALOG0+i);
+      delay(10);
       SUMS[i] += VALS[i][j];
     }
   }
@@ -147,8 +148,7 @@ void setup() {
   // take running average for a few seconds to calculate min and max values from sensors
   unsigned int temp_time = millis();
 
-  while((millis()-temp_time) < 1000) {
-
+  while((millis()-temp_time) < 2000) {
     // update running sum by
     //    subtracting oldest value from sum,
     //    reading new value into its place in the array, and adding it to sum,
@@ -157,6 +157,7 @@ void setup() {
     for(int i=0; i<NUM_CLKS; i++) {
       SUMS[i] -= VALS[i][IVALS[i]];
       VALS[i][IVALS[i]] = analogRead(ANALOG0+i);
+      delay(10);
       SUMS[i] += VALS[i][IVALS[i]];
 
       // update index
@@ -169,20 +170,19 @@ void setup() {
       if(avg < MINQ[i])
         MINQ[i] = avg;
     }
-
   }
 
   // debug
   if (DEBUG == 1) {
     Serial.begin(9600);
-
-    for(int i=0; i<NUM_CLKS; i++) {
+    for(short i=0; i<NUM_CLKS; i++) {
       Serial.print("min,max(");
       Serial.print(i);
       Serial.print("):  ");
       Serial.print(MINQ[i]);
       Serial.print(" ,  ");
       Serial.print(MAXQ[i]);
+
       Serial.println("\n");
     }
 
@@ -206,6 +206,12 @@ void loop() {
       // else do nothing (?????)
       if(I[i] > -1) {
 
+        if(DEBUG ==1){
+          Serial.print("section ");
+          Serial.print(i);
+          Serial.println(" active");
+
+        }
         // whatever number is in this index hasn't been processed yet...
         short temp = V[i][(I[i])];
 
@@ -215,11 +221,18 @@ void loop() {
         //   decrease sc
         //   put index at -1
         if(temp == -1) {
+
+          if(DEBUG ==1){
+            Serial.print("END of section ");
+            Serial.println(i);
+          }
+
+
           // clear index
           I[i] = -1;
 
           // clear array
-          for(int j=0; j<PSIZE; j++){
+          for(short j=0; j<PSIZE; j++){
             V[i][j] = P[0][j];
           }
 
@@ -240,9 +253,14 @@ void loop() {
         //    load present number into memory
         //    update index
         else {
+          if(DEBUG ==1){
+            Serial.print("NOT end of section ");
+            Serial.println(i);
+          }
+
 
           // iterate over bits and set arduino pins
-          for (int j=0; j<BPF; j++) {
+          for (short j=0; j<BPF; j++) {
             short thisBit = ((temp>>j)&0x1);
             digitalWrite(BIT0+j,(thisBit==0)?LOW:HIGH);
           }
@@ -270,9 +288,10 @@ void loop() {
 
   // at always...  
   //     check sensors, and update the running average
-  for(int i=0; i<NUM_CLKS; i++) {
+  for(short i=0; i<NUM_CLKS; i++) {
     SUMS[i] -= VALS[i][IVALS[i]];
     VALS[i][IVALS[i]] = analogRead(ANALOG0+i);
+    delay(1);
     SUMS[i] += VALS[i][IVALS[i]];
 
     // update index
@@ -292,8 +311,17 @@ void loop() {
 
 
   if((DEBUG == 1)) {
-    for(int i=0; i<NUM_CLKS; i++) {
-      unsigned int avg = SUMS[i]/AVGSIZE;
+    for(short i=0; i<NUM_CLKS; i++) {
+
+      unsigned int avg = (unsigned int)(SUMS[i]/AVGSIZE);
+
+/*
+      Serial.print("avg ");
+      Serial.print(i);
+      Serial.print(" = ");
+      Serial.println(avg);
+*/
+
       if((avg > (MAXQ[i]+16)) || (avg < (MINQ[i]-16))) {
 
         Serial.print("(");
@@ -306,33 +334,55 @@ void loop() {
     }
   }
 
-/*
+  /*
   Serial.print( 0xff, BYTE);
-  Serial.print( (avg >> 8) & 0xff, BYTE);
-  Serial.print( avg & 0xff, BYTE);
-*/
+   Serial.print( (avg >> 8) & 0xff, BYTE);
+   Serial.print( avg & 0xff, BYTE);
+   */
 
 
-  if(DEBUG == 0) {
+  if(DEBUG == 1) {
 
     // if less than MAXSEC check current running average signals...
     if(sec_count < MAXSEC){
 
       // check current running average
       // if section off and (avg<min or avg>max) : turn it on
-      for(int i=(NUM_CLKS-1); (i>=0)&&(sec_count<MAXSEC); i--) {
+      for(short i=(NUM_CLKS-1); (i>=0)&&(sec_count<MAXSEC); i--) {
 
-        unsigned int avg = SUMS[i]/AVGSIZE;
+        unsigned int avg = (unsigned int)(SUMS[i]/AVGSIZE);
+
+        if(DEBUG == 1){
+        }
 
         // if this section is off and there's cell phone : turn section on
         //     load pattern into V
         //     update index
         //     sec_count++
-        if( (I[i] == -1) && ((avg > (MAXQ[i]+16))||(avg < (MINQ[i]-16))) ) { 
+        if( (I[i] == -1) && ((avg > (MAXQ[i]+16)) || (avg < (MINQ[i]-16))) ) { 
+
+          if(DEBUG ==1){
+            Serial.print("avg ");
+            Serial.print(i);
+            Serial.print(" = ");
+            Serial.println(avg);
+
+            Serial.print("MAX,MIN( ");
+            Serial.print(i);
+            Serial.print(") = ");
+            Serial.print(MAXQ[i]);
+            Serial.print(", ");
+            Serial.println(MINQ[i]);
+
+            Serial.print("detected signal at section ");
+            Serial.print(i);
+            Serial.println(" loading pattern");
+          }
+
 
           // load pattern
           // right now this is a test pattern
-          for(int j=0; j<PSIZE; j++){
+          for(short j=0; j<PSIZE; j++){
             V[i][j] = P[3][j];
           }
 
@@ -352,6 +402,14 @@ void loop() {
 
 
 }   // loop()
+
+
+
+
+
+
+
+
 
 
 
