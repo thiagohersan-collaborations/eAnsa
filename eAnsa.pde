@@ -1,8 +1,10 @@
-// Ventoinha 04 : Com Antenas !!
+// Ventoinha 05 : Com Antenas !!
 //
-// Teste de antenas...
-//   Quase igual a 03, mas com umas mudancas de "types" e delay entre analogReads
-//
+// Pronto...
+//   
+//   Nao usa padroes, mas liga uma regiao inteira por vez, e no maximo 1 regiao
+//   (e tem timeout de 3 minutos)
+
 
 #define DEBUG 1
 
@@ -18,8 +20,10 @@
 #define BIT0 2
 
 // period at which we update the flops
-#define TIME 1000
+#define TIME 3000
 
+// period at which we run a random section/pattern (in milliseconds)
+#define TIMEOUT 180000
 
 ///////////
 // pre-defined patterns
@@ -29,23 +33,28 @@
 
 // Patterns should have same length for synchronizing interwoven patterns
 // 
-const int8_t P[4][PSIZE] = {
+const int8_t P[5][PSIZE] = {
   // clear pattern (probably not used, since memories don' get clocked unless they're active, but ....
   {
-    0, 0, 0, 0, 0, 0, 0, 0,0, -1, 0, 0,-1,0,0,0                                                                 }
+    0, 0, 0, 0, 0, 0, 0, 0,0, -1, 0, 0,-1,0,0,0                                                                     }
   ,
 
   // test patterns
   {
-    1, 3, 6,12,24,48,32, 0,0, 0, 0, 0,-1,-1,0,0                                                                 }
+    1, 3, 6,12,24,48,32, 0,0, 0, 0, 0,-1,-1,0,0                                                                     }
   ,
   {
-    32,0, 0, 0, 0, 0, 1, 3,6,12,24,48,-1,-1,0,0                                                                 }
+    32,0, 0, 0, 0, 0, 1, 3,6,12,24,48,-1,-1,0,0                                                                     }
   ,
 
   // simple pattern
   {
-    3, 6,12,24,48,-1, -1, 0,0, 0, 0, 0,-1,0,0,0                                                                 }
+    3, 6,12,24,48,-1, -1, 0,0, 0, 0, 0,-1,0,0,0                                                                     }
+  ,
+
+  // not a pattern, but turn all fans on in a section for 2*TIME seconds
+  {
+    30, 30,-1,-1,-1, -1, 0,0, 0, 0, 0,-1,0,0,0                                                                     }
 
 
 };
@@ -62,7 +71,7 @@ int8_t I[NUM_CLKS];
 // depends on how many columns we turn on at a time, per section
 // 4 only if we have interwoven patterns.... with lots of 0s...
 // this will probably be 2...
-#define MAXSEC 2
+#define MAXSEC 1
 
 // how many of the 4 sections are active
 uint8_t sec_count;
@@ -91,6 +100,11 @@ unsigned int MINQ[NUM_CLKS];
 
 // cycle counter
 uint32_t cycle_count;
+
+// timeout counter
+unsigned long last_timeout;
+
+
 
 void setup() {
 
@@ -193,7 +207,38 @@ void setup() {
 
 void loop() {
 
-  // at every P millis, load a new number onto flops...
+  // if we go TIMEOUT millis without a signal... load a random section
+  // (this is redundant: shouldn't be able to have sec_count != 0 when last_timeout > TIMEOUT, but....
+  if((sec_count == 0) && ((millis() - last_timeout) > TIMEOUT)) {
+    last_timeout = millis();
+
+    short i = (short)(random(0,NUM_CLKS));
+
+    if(DEBUG == 1){
+      Serial.print("TIMEOUT!! Loading section");
+      Serial.println(i); 
+    }
+
+    // load pattern
+    // right now this is 4 columns at a time
+    for(short j=0; j<PSIZE; j++){
+      V[i][j] = P[4][j];
+    }
+
+    // turn itself on by updating index
+    // (code below will deal with the rest)
+    // we're here because sec_count == 0, 
+    // so all I[n]==-1. Make it 0 by adding 1.
+    I[i] = I[i] + 1;
+
+    // update section counter
+    sec_count += 1;
+
+  }
+
+
+
+  // at every TIME millis, load a new number onto flops...
   if(millis()/TIME != cycle_count) {
     cycle_count = millis()/TIME;
 
@@ -220,6 +265,7 @@ void loop() {
         //   clear memory
         //   decrease sc
         //   put index at -1
+        //   update last_timeout
         if(temp == -1) {
 
           if(DEBUG ==1){
@@ -247,6 +293,10 @@ void loop() {
 
           // decrease section count
           sec_count -= 1;
+
+          // last_timeout becomes last time we turned off a section
+          last_timeout = millis();
+
         }
 
         // active and in the middle of a pattern
@@ -315,12 +365,12 @@ void loop() {
 
       unsigned int avg = (unsigned int)(SUMS[i]/AVGSIZE);
 
-/*
+      /*
       Serial.print("avg ");
-      Serial.print(i);
-      Serial.print(" = ");
-      Serial.println(avg);
-*/
+       Serial.print(i);
+       Serial.print(" = ");
+       Serial.println(avg);
+       */
 
       if((avg > (MAXQ[i]+16)) || (avg < (MINQ[i]-16))) {
 
@@ -381,14 +431,14 @@ void loop() {
 
 
           // load pattern
-          // right now this is a test pattern
+          // right now this is 4 columns at a time
           for(short j=0; j<PSIZE; j++){
-            V[i][j] = P[3][j];
+            V[i][j] = P[4][j];
           }
 
           // turn itself on by updating index
           // (code above will deal with the rest)
-          // here because I[i]==-1, so make it 0. 
+          // we're here because I[i]==-1, so make it 0 by adding 1. 
           I[i] = I[i] + 1;
 
           // update section counter
@@ -402,6 +452,8 @@ void loop() {
 
 
 }   // loop()
+
+
 
 
 
